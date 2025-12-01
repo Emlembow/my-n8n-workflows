@@ -288,11 +288,11 @@ This workflow handles:
 ## Cost Considerations
 
 **OpenAI API Costs**:
-- Activity coaching: ~1-2k tokens per workout (~$0.01-0.02 per workout)
-- Weekly planning: ~5-10k tokens per plan (~$0.05-0.10 per week)
+- Activity coaching: 1-2k tokens per workout ($0.01-0.02 per workout)
+- Weekly planning: 5-10k tokens per plan ($0.05-0.10 per week)
 - Estimated monthly cost: $0.30-$1.00 depending on training volume
-  - Light training (10 workouts/month): ~$0.30-0.60
-  - Heavy training (30 workouts/month): ~$0.50-1.00
+  - Light training (10 workouts/month): $0.30-0.60
+  - Heavy training (30 workouts/month): $0.50-1.00
 
 **n8n Costs**:
 - Self-hosted: Free (only infrastructure costs)
