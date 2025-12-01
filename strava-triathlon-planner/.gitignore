@@ -1,0 +1,30 @@
+# Ignore the original workflow with personal credentials
+Coach.json
+
+# Ignore the cleanup script (not needed for distribution)
+clean_workflow.py
+
+# Ignore any personal notes or config files
+*.env
+.env*
+config.json
+personal_notes.md
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*

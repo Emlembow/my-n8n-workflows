@@ -1,0 +1,973 @@
+{
+  "name": "Coach",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "raceDate",
+              "value": "2026-06-01",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "raceName",
+              "value": "Your Race Name",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "raceType",
+              "value": "Half Ironman",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "planningDays",
+              "value": 7,
+              "type": "number"
+            },
+            {
+              "id": "id-5",
+              "name": "todayDate",
+              "value": "={{ $now.plus({ days: 1 }).toFormat('yyyy-MM-dd') }}",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "lookbackDays",
+              "value": 90,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "2a01a9eb-887e-46e1-92a3-073fcf6e8424",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        32,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.1-2025-11-13",
+          "mode": "id"
+        },
+        "builtInTools": {
+          "codeInterpreter": true
+        },
+        "options": {
+          "reasoningEffort": "high"
+        }
+      },
+      "id": "579ef829-fd61-4ed6-bc6f-ab4122ca841c",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        928,
+        1216
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "CONFIGURE_ME",
+          "name": "Configure openAiApi"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.datetime }}",
+              "rightValue": "={{ $now.minus({ days: $('Workflow Configuration').first().json.lookbackDays }).toISO() }}",
+              "operator": {
+                "type": "dateTime",
+                "operation": "afterOrEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5f71557f-8d73-4049-8a3d-0b5cd97ca6c4",
+      "name": "Filter Last 90 Days",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the AI agent output and transform to tabular format\nconst aiOutput = $input.first().json;\n\n// Extract the training plan from the AI response\nlet trainingPlan;\nif (typeof aiOutput.output === 'string') {\n  // Try to parse JSON from the output string\n  const jsonMatch = aiOutput.output.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/);\n  if (jsonMatch) {\n    trainingPlan = JSON.parse(jsonMatch[0]);\n  } else {\n    throw new Error('Could not find valid JSON array in AI output');\n  }\n} else if (Array.isArray(aiOutput.output)) {\n  trainingPlan = aiOutput.output;\n} else if (Array.isArray(aiOutput)) {\n  trainingPlan = aiOutput;\n} else {\n  throw new Error('Unexpected AI output format');\n}\n\n// Transform to tabular format with separate rows for each activity\nconst outputRows = [];\n\nfor (const day of trainingPlan) {\n  // Create a row for swim activity\n  if (day.swim && day.swim.toUpperCase() !== 'REST') {\n    outputRows.push({\n      date: day.date,\n      activity_type: 'Swim',\n      workout: day.swim,\n      notes: day.notes || ''\n    });\n  }\n  \n  // Create a row for bike activity\n  if (day.bike && day.bike.toUpperCase() !== 'REST') {\n    outputRows.push({\n      date: day.date,\n      activity_type: 'Bike',\n      workout: day.bike,\n      notes: day.notes || ''\n    });\n  }\n  \n  // Create a row for run activity\n  if (day.run && day.run.toUpperCase() !== 'REST') {\n    outputRows.push({\n      date: day.date,\n      activity_type: 'Run',\n      workout: day.run,\n      notes: day.notes || ''\n    });\n  }\n  \n  // If all activities are REST, create a single REST day row\n  if ((!day.swim || day.swim.toUpperCase() === 'REST') &&\n      (!day.bike || day.bike.toUpperCase() === 'REST') &&\n      (!day.run || day.run.toUpperCase() === 'REST')) {\n    outputRows.push({\n      date: day.date,\n      activity_type: 'Rest',\n      workout: 'REST',\n      notes: day.notes || 'Recovery day'\n    });\n  }\n}\n\nreturn outputRows.map(row => ({ json: row }));"
+      },
+      "id": "d4f3f29e-4cde-4796-9803-f15dc315f632",
+      "name": "Parse and Transform Training Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "primary"
+        },
+        "start": "={{ $json.date }}T06:00:00",
+        "end": "={{ $json.date }}T07:00:00",
+        "additionalFields": {
+          "description": "=Workout: {{ $json.workout }}\n\nNotes: {{ $json.notes }}",
+          "summary": "={{ $json.activity_type }} Training"
+        }
+      },
+      "id": "66fb83ce-215b-4edf-a942-7ad18ec189ca",
+      "name": "Create Calendar Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1504,
+        1184
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Configure googleCalendarOAuth2Api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "trainingPlan",
+        "options": {}
+      },
+      "id": "0f7031d9-555a-4f2b-b3fe-bbf7b8de47eb",
+      "name": "Aggregate Training Plan",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1504,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "gpt-5-nano"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "b9554fa5-3dba-4c8a-90c3-8855414b144f",
+      "name": "OpenAI Chat Model for Message",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1808,
+        1024
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "CONFIGURE_ME",
+          "name": "Configure openAiApi"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "8ed134e3-128a-4abf-9d04-b71fdfa7f510",
+      "name": "Send Telegram Notification",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2080,
+        800
+      ],
+      "webhookId": "CONFIGURE_WEBHOOK_ID",
+      "credentials": {
+        "telegramApi": {
+          "id": "CONFIGURE_ME",
+          "name": "Configure telegramApi"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://www.strava.com/api/v3/athlete/activities",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "stravaOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "per_page",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e07d5c91-f91d-450c-8827-f653bce7061e",
+      "name": "Get Latest Strava Activity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        32,
+        368
+      ],
+      "credentials": {
+        "stravaOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Configure stravaOAuth2Api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.1",
+          "mode": "list",
+          "cachedResultName": "gpt-5.1"
+        },
+        "builtInTools": {
+          "codeInterpreter": true
+        },
+        "options": {
+          "reasoningEffort": "high"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        928,
+        592
+      ],
+      "id": "1c12c6a0-e1d3-47a9-91f6-4d1a164e6392",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "CONFIGURE_ME",
+          "name": "Configure openAiApi"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1392,
+        368
+      ],
+      "id": "783929aa-26ee-426e-b5eb-f10d60668041",
+      "name": "Send a text message",
+      "webhookId": "CONFIGURE_WEBHOOK_ID",
+      "credentials": {
+        "telegramApi": {
+          "id": "CONFIGURE_ME",
+          "name": "Configure telegramApi"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "CONFIGURE_DATA_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Training"
+        },
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}"
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        560
+      ],
+      "id": "78ca43c1-ae9d-4614-a76b-a58a85e00ac7",
+      "name": "Get row(s) in Data table"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "CONFIGURE_DATA_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Training Plan"
+        },
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}"
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        592
+      ],
+      "id": "18a000aa-1280-42fd-88fe-de7cada973b1",
+      "name": "Get row(s) in Data table1"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "680bd0b0-189d-47d9-9d22-6d0e0c138939",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -192,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const KM_PER_MILE = 1.60934;\n\n// Personal constants \u2013 adjust if needed\nconst USER_WEIGHT_LBS = 200;   // your weight\nconst USER_RESTING_HR = 60;    // estimated resting HR\nconst USER_MAX_HR = 190;       // estimated max HR\n\nconst inputItems = $input.all();\nconst output = [];\n\nfor (const item of inputItems) {\n  // HTTP Request node returns the Strava activities array\n  const activities = Array.isArray(item.json) ? item.json : [item.json];\n\n  for (const data of activities) {\n    // --- Distance & pace (in miles / min per mile) ---\n\n    // distance in meters from Strava\n    const distanceKmRaw = data.distance / 1000;          // km\n    const distanceMilesRaw = distanceKmRaw / KM_PER_MILE;\n    const distanceKm = distanceMilesRaw.toFixed(2);      // now actually miles\n\n    const durationMinutes = (data.moving_time / 60).toFixed(2);\n\n    // paceMinPerKm now represents min/mile\n    const paceMinPerKm = distanceMilesRaw > 0\n      ? (data.moving_time / 60) / distanceMilesRaw\n      : 0;\n\n    const paceFormatted =\n      Math.floor(paceMinPerKm) + ':' +\n      Math.floor((paceMinPerKm % 1) * 60)\n        .toString()\n        .padStart(2, '0');\n\n    // --- Calorie estimate using HR + weight (tuned to ~651 kcal for your sample run) ---\n\n    let calories = data.calories || 0;\n\n    if (data.has_heartrate && data.average_heartrate) {\n      const weightKg = USER_WEIGHT_LBS * 0.45359237;\n      const minutesMoving = data.moving_time / 60;\n\n      // Heart rate reserve intensity (0\u20131)\n      const hrReserve = USER_MAX_HR - USER_RESTING_HR;\n      const intensityRaw = (data.average_heartrate - USER_RESTING_HR) / hrReserve;\n      const intensity = Math.max(0, Math.min(1, intensityRaw));\n\n      // Adjusted MET mapping to bring estimates down:\n      // roughly 4\u201312 METs instead of going as high as ~14\u201315.\n      const baseMet = 4;\n      const metSpan = 8; // tuned so your example run lands ~650\u2013651 kcal\n\n      const met = baseMet + intensity * metSpan;\n\n      // Standard kcal/min formula: (MET * 3.5 * kg / 200) * minutes\n      const kcalPerMin = met * 3.5 * weightKg / 200;\n      calories = Math.round(kcalPerMin * minutesMoving);\n    }\n\n    output.push({\n      json: {\n        datetime: data.start_date_local,\n        distance: distanceKm,                 // miles (string)\n        duration: durationMinutes,            // minutes (string)\n        pace: paceFormatted,                  // min/mile, \"M:SS\"\n        elevation_gain: data.total_elevation_gain,\n        calories,                             // ~651 kcal for your sample run\n        suffer_score: data.suffer_score || 0,\n      },\n    });\n  }\n}\n\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        368
+      ],
+      "id": "2dc8ac97-c470-4ae0-9153-3d9dd68dc523",
+      "name": "Convert KM to Miles"
+    },
+    {
+      "parameters": {
+        "operation": "rowNotExists",
+        "dataTableId": {
+          "__rl": true,
+          "value": "CONFIGURE_DATA_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Training"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "datetime",
+              "keyValue": "={{ $json.datetime }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        480,
+        368
+      ],
+      "id": "fb8e58fd-2bf9-435c-a141-b6c0aa215275",
+      "name": "Is this new?"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "CONFIGURE_DATA_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Training"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "distance_miles": "={{ $json.distance }}",
+            "duration_minutes": "={{ $json.duration }}",
+            "calories": "={{ $json.calories }}",
+            "suffer_score": "={{ $json.suffer_score }}",
+            "average_heartrate": "={{ $(\"Get Latest Strava Activity\").first().json.average_heartrate }}",
+            "max_heartrate": "={{ $(\"Get Latest Strava Activity\").first().json.max_heartrate }}",
+            "pace_min_per_mile": "={{ $json.pace }}",
+            "datetime": "={{ $json.datetime }}",
+            "type": "={{ $(\"Get Latest Strava Activity\").first().json.type }}",
+            "sport_type": "={{ $(\"Get Latest Strava Activity\").first().json.sport_type }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "datetime",
+              "displayName": "datetime",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sport_type",
+              "displayName": "sport_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "distance_miles",
+              "displayName": "distance_miles",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "duration_minutes",
+              "displayName": "duration_minutes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "pace_min_per_mile",
+              "displayName": "pace_min_per_mile",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "calories",
+              "displayName": "calories",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "suffer_score",
+              "displayName": "suffer_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "average_heartrate",
+              "displayName": "average_heartrate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "max_heartrate",
+              "displayName": "max_heartrate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        704,
+        368
+      ],
+      "id": "dc94b929-2d25-45ed-802a-284c514f07a7",
+      "name": "If not, add it"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Target Race: IRONMAN 70.3 Boulder\nRace Date: June 13, 2026\nActivity Date/Time: {{ $('Convert KM to Miles').item.json.datetime }}\nActivity:  {{ $('Get Latest Strava Activity').item.json.type }}\nDistance (miles): {{ $('Convert KM to Miles').item.json.distance }}\nPace (min/mile): {{ $('Convert KM to Miles').item.json.pace }}\nElevation gain (Feet):{{ $('Convert KM to Miles').item.json.elevation_gain }}\nCalories: {{ $('Convert KM to Miles').item.json.calories }}\nAverage Heartrate: {{ $('Get Latest Strava Activity').item.json.average_heartrate }}\nMax Heartrate: {{ $('Get Latest Strava Activity').item.json.max_heartrate }}",
+        "options": {
+          "systemMessage": "<role>\nYou are a triathlon coach specializing in IRONMAN 70.3 preparation. Your job is to review each athlete\u2019s latest workout and provide a short, SMS-length coaching message about TODAY only.\n</role>\n\n<target_users>\nAge-group triathletes training for IRONMAN 70.3 Boulder on June 13, 2026.\n</target_users>\n\n<scope>\n- Interpret the workout details provided in the user message (activity type, distance, pace, elevation, HR, calories, timestamp).\n- Reference the athlete\u2019s training plan via the Google Sheets tool and their recent training history via the Training Data Table tool.\n- Evaluate how this single workout fits with TODAY\u2019S planned session (intensity, duration, purpose).\n- Provide a brief coaching response (max ~300 characters) that feels personal and supportive.\n- Focus feedback on:\n  - How well they executed today\u2019s intended session.\n  - Whether effort and load were appropriate relative to the plan and recent history.\n  - Same-day recovery ideas only (e.g., light stretching, easy walking, hydration, nutrition, mobility).\n  - Technique or pacing cues they can remember next time (without changing the plan).\n</scope>\n\n<out_of_scope>\n- Do not modify or override the training plan.\n- Do not suggest what to do \u201ctomorrow,\u201d \u201cthis week,\u201d or in any future session.\n- Do not create new workouts or volumes.\n- Do not provide medical or clinical advice.\n- Do not exceed SMS-length.\n</out_of_scope>\n\n<style>\n- Tone: supportive, concise, professional coach.\n- Message must feel human and specific to the activity and that day\u2019s plan.\n- No emojis unless long-term usage indicates preference; default to none.\n- Avoid generic praise; anchor comments to actual metrics (pace, distance, HR, elevation, etc.).\n</style>\n\n<input_rules>\n- Treat the workout data as factual.\n- Compare the activity against the planned session for that date and the recent load trend.\n- If the athlete appears to be overreaching (e.g., repeated high HR, much faster/longer than plan), mention it as a caution and suggest same-day recovery only (e.g., extra hydration, short walk, gentle stretching).\n- If data appears abnormal or missing, mention it briefly and give a safe, neutral same-day recommendation.\n</input_rules>\n\n<reasoning>\nPerform all detailed reasoning internally. Output only the final short message.\n</reasoning>\n\n<output_format>\nReturn exactly one brief coaching message about:\n1) how today\u2019s session went relative to the plan, and\n2) optional same-day recovery ideas or technique cues.\nNo headers, no lists, no explanations.\n</output_format>\n\n<examples>\n<example_input>\nActivity: Run\nDistance: 4.0 miles\nPace: 8:30\nAvg HR: 168\nMax\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        992,
+        368
+      ],
+      "id": "998317a1-9452-45bc-9e29-5c2641b815eb",
+      "name": "AI Tri Coach"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtHour": 3
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -192,
+        992
+      ],
+      "id": "a138aae8-711f-474f-9ae5-21c664b5f713",
+      "name": "Every Sunday"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "CONFIGURE_DATA_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Training"
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        256,
+        992
+      ],
+      "id": "44d0fabc-c2ab-48cd-8a7f-0df388a7f59f",
+      "name": "Load Training History"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "42353050-10b2-4ccc-a640-01a8d890d196",
+      "name": "Prepare Data for AI",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        704,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Start Date for Plan: {{ $('Workflow Configuration').first().json.todayDate }} (tomorrow)\nRace: {{ $('Workflow Configuration').first().json.raceName }}\nRace Date: {{ $('Workflow Configuration').first().json.raceDate }}\nRace Type: {{ $('Workflow Configuration').first().json.raceType }}\nPlanning Period: Next {{ $('Workflow Configuration').first().json.planningDays }} days starting tomorrow\n\nTraining History (last 90 days):\n{{ JSON.stringify($json.data, null, 2) }}",
+        "options": {
+          "systemMessage": "CRITICAL: The training plan must start TOMORROW (the day after today). Day 1 of the plan should be tomorrow's date, NOT today. This ensures the athlete can always see tomorrow's workout in advance.\n\nCRITICAL: WEEKLY STRUCTURE REQUIREMENT: Schedule swim/bike/run workouts on ONLY 5 days per week maximum. The other 2 days MUST be dedicated to STRENGTH TRAINING and FLEXIBILITY/MOBILITY work. These are NOT rest days - they are active recovery days focused on injury prevention, core strength, and range of motion.\n\nEXAMPLE WEEKLY STRUCTURE:\n- Monday: Swim only (bike: REST, run: REST, strength: REST)\n- Tuesday: Run only (swim: REST, bike: REST, strength: REST)\n- Wednesday: Strength & Flexibility (swim: REST, bike: REST, run: REST)\n- Thursday: Bike only (swim: REST, run: REST, strength: REST)\n- Friday: Strength & Flexibility (swim: REST, bike: REST, run: REST)\n- Saturday: Long bike only (swim: REST, run: REST, strength: REST)\n- Sunday: Brick workout (swim: REST, bike: 90min, run: 30min, strength: REST)\n\nCRITICAL: DAILY WORKOUT DISTRIBUTION: Each day should focus on ONE primary discipline only. Do NOT schedule multiple sports on the same day except for brick workouts (bike+run combination). Most days = single sport. Brick workouts = once per week maximum (twice per week allowed only in final 20% of training before taper).\n\nEXAMPLES OF PROPER DAILY SCHEDULING:\n- Monday: Swim only (bike: REST, run: REST)\n- Tuesday: Run only (swim: REST, bike: REST)\n- Wednesday: Bike only (swim: REST, run: REST)\n- Thursday: Swim only (bike: REST, run: REST)\n- Friday: REST (swim: REST, bike: REST, run: REST)\n- Saturday: Long bike only (swim: REST, run: REST)\n- Sunday: Brick workout (swim: REST, bike: 90min, run: 30min)\n\nYou are a professional triathlon coach with expertise in Half Ironman training and periodization.\n\nYour task is to create a personalized 7-day training plan based on:\n1. The athlete's complete training history (analyze patterns, volume, intensity)\n2. Today's date and the exact number of days until race day\n3. Progressive training principles following proper periodization\n\nIMPORTANT: The training history data contains distance in miles and duration in minutes. Use this data to understand the athlete's training patterns and volume.\n\nHEART RATE ZONE TRAINING:\nBase all intensity recommendations on the following heart rate zones based on this athlete's physiology:\n- Zone 1 (95-120 bpm): Walking and very easy recovery only\n- Zone 2 (120-145 bpm): Easy aerobic effort (biking and swimming easy pace)\n- Zone 3 (145-160 bpm): Moderate effort and easy running\n- Zone 4 (160-175 bpm): Tempo/threshold running and hard efforts\n- Zone 5 (175+ bpm): Maximum effort and intervals\n\nIMPORTANT: Zone 1-2 are primarily for biking and swimming. Running will naturally be Zone 3 or higher for this athlete - it is not physiologically possible to run below Zone 3.\n\nAll workout intensity prescriptions MUST reference these heart rate zones.\n\nCORE TRAINING PRINCIPLES:\n\n1. PERIODIZATION STRUCTURE\n- Base Phase (40-45% of training): Build aerobic foundation, establish habits\n- Build Phase (35-40%): Add intensity + volume progressively\n- Peak Phase (15-20%): Race-specific work, highest volume\n- Taper (final week): Reduce volume 50%, maintain intensity\n\n2. RECOVERY CYCLES\n- Follow 3 weeks loading + 1 recovery week pattern\n- Recovery weeks = 60-70% normal volume\n- This prevents overtraining and enables adaptation\n\n3. PROGRESSIVE OVERLOAD\n- Maximum 10% volume increase per week\n- Build duration first, then add intensity\n- Long workouts grow 15-30min per cycle\n\n4. WEEKEND PHILOSOPHY - CRITICAL\n- Schedule ONE long workout per weekend (Saturday or Sunday)\n- Rotate: long bike \u2192 long run \u2192 long brick workout\n- Weekdays = technique work, tempo runs, interval sessions\n- This prevents overuse injuries and allows proper recovery\n\n5. BRICK WORKOUT STRATEGY\nFrequency: Weekly during build phase, twice weekly allowed during peak phase\n- Weeks 1-8 (Base): Optional short bricks only\n- Weeks 9-24 (Build): ONE brick workout per week\n- Weeks 25-27 (Peak/Final 20%): TWO brick workouts per week allowed\n- Types:\n  * Short: 30-45min bike + 15-20min run (weekday option)\n  * Medium: 60-90min bike + 30-40min run (weekly standard)\n  * Long: 2hr+ bike + 45-60min run (every 3-4 weeks on weekend)\n\nCRITICAL SCHEDULING RULE: Brick workouts can ONLY occur on weekends (Saturday or Sunday). Never schedule a brick workout on a weekday. This ensures adequate recovery time and aligns with the weekend long workout philosophy.\n\nWhy weekly bricks matter:\n- Trains bike-to-run transition (neuromuscular adaptation)\n- Reduces \"jelly legs\" through practice\n- Race-specific skill requiring repetition\n- Time-efficient workout combination\n\nPeak Phase Brick Strategy:\n- During the final 20% of training (Peak Phase), TWO brick workouts per week are allowed\n- This increased frequency is critical for race-specific preparation\n- Typically schedule one mid-week shorter brick and one weekend longer brick\n- This prepares the body for the specific demands of race day transitions\n\n6. STRENGTH & FLEXIBILITY DAYS\n- Schedule 2 days per week for strength training and flexibility/mobility work\n- These are NOT rest days - they are active recovery days focused on injury prevention, core strength, and range of motion\n- Duration: 30-45 minutes of functional strength training (core, glutes, hip stability, single-leg work) plus 15-20 minutes of mobility/stretching (hip flexors, hamstrings, thoracic spine, shoulders)\n- These days support triathlon performance and prevent overuse injuries\n- Typically scheduled mid-week to break up swim/bike/run training days\n\nDO's:\n1. Follow 80/20 rule: 80% easy effort, 20% moderate-hard (Zone 3-5). NOTE: For running specifically, most easy runs will be Zone 3 (145-160 bpm) since running below that isn't physiologically possible for this athlete. Easy biking and swimming should be Zone 2 (120-145 bpm).\n2. Build base first: 8-12 weeks aerobic foundation before intensity\n3. Provide variety: Easy workouts (most), tempo (weekly), intervals (1-2x/week), race pace (peak phase only)\n4. Respect recovery: 1+ rest days per week, easy means EASY\n5. Race-specific progression: Final 4-6 weeks simulate race conditions\n6. Balance disciplines: 2-3 workouts per sport weekly spread across 5 days maximum. Reserve 2 days for strength and flexibility work.\n7. Listen to body: Adjust for fatigue and life stress\n8. Schedule 2 days per week for strength training and flexibility/mobility work. These are NOT rest days - they are active recovery days focused on injury prevention, core strength, and range of motion.\n\nDON'Ts:\n1. NO multiple long workouts per weekend \u2192 leads to burnout/injury\n2. NEVER skip recovery weeks \u2192 adaptation happens during rest\n3. NO early intensity \u2192 need 8-12 week base minimum\n4. DON'T train through pain \u2192 soreness okay, sharp pain not\n5. DON'T skip taper \u2192 arrive rested, not fatigued\n6. AVOID \"moderate zone\" \u2192 easy days easy, hard days hard\n7. DON'T weekend-cram \u2192 weekday consistency builds fitness\n8. NO brick workouts every day \u2192 weekly frequency is sufficient (twice weekly only in peak phase)\n9. DO NOT schedule swim+bike+run on the same day. DO NOT schedule swim+bike on the same day. DO NOT schedule swim+run on the same day. The ONLY exception is brick workouts (bike immediately followed by run for transition practice).\n10. DO NOT schedule more than 5 swim/bike/run workout days per week. Always include 2 strength/flexibility days.\n\nKEY GUIDING PRINCIPLES:\n- Specificity Progression: General fitness \u2192 sport-specific \u2192 race simulation\n- Minimum Effective Dose: Least training needed for goal (more volume = more injury risk)\n- Consistency Over Perfection: Missing 1 workout okay, consistency over time matters\n\nVolume Distribution:\n- Base: 4-7 hrs/week\n- Build: 8-11 hrs/week\n- Peak: 10-14 hrs/week\n- Taper: 4-6 hrs/week\n\nLong Workout Rule: 25-40% of weekly volume, once per week maximum\n\nGolden Rule: \"Train consistently at appropriate intensity, recover adequately, progress gradually.\"\n\nBalance: Stress (workouts) + Recovery (rest) + Progression (gradual increase) + Specificity (race-like training)\n\nWEEKEND SCHEDULING REQUIREMENTS:\n- Schedule the week's longest/hardest workout on Saturday or Sunday\n- Long bike rides (90+ minutes) MUST be on weekends\n- Long runs (60+ minutes) MUST be on weekends\n- Brick workouts (bike + run combinations) MUST be on weekends\n- Weekdays should focus on shorter, more intense sessions or recovery workouts\n- CRITICAL: Brick workouts (bike + run combinations) MUST ONLY be scheduled on Saturday or Sunday. Never schedule brick workouts on weekdays (Monday-Friday).\n\nNOTES FIELD GUIDELINES:\n- Keep notes brief and actionable (1 short sentence max)\n- Focus on HOW to execute the workout, not WHY you're doing it\n- Include specific workout details if applicable (intervals, drills, target zones)\n- Include heart rate zone targets based on the zones defined above (e.g., \"Easy run in Zone 3 (145-160 bpm)\", \"Tempo run in Zone 4 (160-175 bpm)\", \"Intervals in Zone 5 (175+ bpm)\", \"Easy bike in Zone 2 (120-145 bpm)\")\n- For strength/flexibility days, include brief guidance on focus areas (e.g., \"Core and hip stability work, plus hip flexor stretching\")\n- Examples: \"Focus on smooth transitions\", \"Include 8x200m in Zone 5\", \"Keep effort in Zone 3\", \"Practice race nutrition\"\n- Avoid explanations about training philosophy or rationale\n\nReturn ONLY a valid JSON array (no markdown, no explanation) in this exact format:\n[\n  {\n    \"day\": \"Day 1\",\n    \"date\": \"YYYY-MM-DD\",\n    \"swim\": \"workout description or REST\",\n    \"bike\": \"workout description or REST\",\n    \"run\": \"workout description or REST\",\n    \"notes\": \"brief execution notes with HR zone guidance (e.g., Easy run in Zone 3 (145-160 bpm), Tempo run in Zone 4 (160-175 bpm), Intervals in Zone 5 (175+ bpm), Easy bike in Zone 2 (120-145 bpm)) OR strength/flexibility guidance (e.g., Core and hip stability work, plus hip flexor stretching)\"\n  }\n]\n\nIMPORTANT: For each day, typically only ONE of swim/bike/run should have a workout, the other two should be REST. Exception: brick workout days will have both bike AND run, with swim as REST. On strength/flexibility days, all three sports (swim/bike/run) should be REST, and the notes field should describe the strength/flexibility work.\n\nEnsure the plan shows clear progression, follows proper periodization principles, includes ONE brick workout per week (TWO per week allowed only during Peak Phase - final 20% of training), schedules long workouts on weekends, includes 2 strength/flexibility days per week, and respects recovery cycles."
+        }
+      },
+      "id": "8a946867-1fe1-4d38-8038-650de2d36ebc",
+      "name": "AI Tri Planner",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        928,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "CONFIGURE_DATA_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Training Plan"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ $('Parse and Transform Training Plan').item.json.date }}",
+            "activity_type": "={{ $('Parse and Transform Training Plan').item.json.activity_type }}",
+            "workout": "={{ $('Parse and Transform Training Plan').item.json.workout }}",
+            "notes": "={{ $('Parse and Transform Training Plan').item.json.notes }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "activity_type",
+              "displayName": "activity_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "workout",
+              "displayName": "workout",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1504,
+        992
+      ],
+      "id": "15216bc7-a708-45ad-bc1e-b0ce487e51cf",
+      "name": "Add to Training Plan"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Training Plan Summary:\n{{ JSON.stringify($('Aggregate Training Plan').first().json.trainingPlan, null, 2) }}\n\nRace Details:\n- Race: {{ $('Workflow Configuration').first().json.raceName }}\n- Date: {{ $('Workflow Configuration').first().json.raceDate }}\n- Type: {{ $('Workflow Configuration').first().json.raceType }}",
+        "options": {
+          "systemMessage": "You are an expert triathlon coach creating a motivational SMS message.\n\nYour task is to:\n1. Review the 7-day training plan that was just created\n2. Analyze the race details and timeline\n3. Generate a SHORT, motivational message suitable for Telegram (max 200 characters)\n4. Highlight key workouts for the week\n5. Include an encouraging note about race preparation\n\nThe message should be:\n- Concise and punchy (SMS-length)\n- Motivating and positive\n- Mention 1-2 key workouts from the plan\n- Reference the race goal\n- Use emojis sparingly for impact\n\nReturn ONLY the message text, nothing else."
+        }
+      },
+      "id": "90166de8-6895-40e6-837b-4fb08cb8d152",
+      "name": "Tri Plan Announcer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1728,
+        800
+      ]
+    }
+  ],
+  "connections": {
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Load Training History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Tri Planner",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Last 90 Days": {
+      "main": [
+        [
+          {
+            "node": "Prepare Data for AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse and Transform Training Plan": {
+      "main": [
+        [
+          {
+            "node": "Create Calendar Events",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aggregate Training Plan",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Add to Training Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Training Plan": {
+      "main": [
+        [
+          {
+            "node": "Tri Plan Announcer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model for Message": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Tri Plan Announcer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest Strava Activity": {
+      "main": [
+        [
+          {
+            "node": "Convert KM to Miles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Tri Coach",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in Data table": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Tri Coach",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in Data table1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Tri Coach",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        []
+      ]
+    },
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Latest Strava Activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert KM to Miles": {
+      "main": [
+        [
+          {
+            "node": "Is this new?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is this new?": {
+      "main": [
+        [
+          {
+            "node": "If not, add it",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If not, add it": {
+      "main": [
+        [
+          {
+            "node": "AI Tri Coach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Tri Coach": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Sunday": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Training History": {
+      "main": [
+        [
+          {
+            "node": "Filter Last 90 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data for AI": {
+      "main": [
+        [
+          {
+            "node": "AI Tri Planner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Tri Planner": {
+      "main": [
+        [
+          {
+            "node": "Parse and Transform Training Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tri Plan Announcer": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
