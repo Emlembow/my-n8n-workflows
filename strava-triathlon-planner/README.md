@@ -2,6 +2,8 @@
 
 An intelligent triathlon coaching system that automatically monitors your Strava activities, provides personalized feedback, and generates weekly training plans using AI.
 
+![Workflow Diagram](workflow-diagram.png)
+
 ## Features
 
 - **Automatic Activity Tracking**: Monitors Strava every 5 minutes for new activities
